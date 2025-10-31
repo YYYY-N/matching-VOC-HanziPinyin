@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>漢字－拼音配對（除夕篇）</title>
+  <style>
+    :root{
+      --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --text:#e5e7eb;
+      --card:#1f2937; --card-face:#0b1020; --shadow:0 10px 25px rgba(0,0,0,.4);
+      --radius:16px;
+    }
+    html,body{height:100%}
+    body{
+      margin:0; font-family:ui-sans-serif,system-ui,-apple-system,"Noto Sans TC","Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang TC","Microsoft JhengHei","Noto Sans CJK TC",sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, #1d2a5e 0%, transparent 60%), var(--bg);
+      color:var(--text); display:flex; flex-direction:column;
+    }
+    header{
+      padding:18px 20px; display:flex; flex-wrap:wrap; align-items:center; gap:12px;
+      position:sticky; top:0; z-index:5; background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,0));
+      border-bottom:1px solid rgba(255,255,255,.06); backdrop-filter:blur(6px);
+    }
+    header h1{font-size:clamp(18px,2.5vw,22px); margin:0; font-weight:700}
+    .controls{display:flex; gap:8px; flex-wrap:wrap}
+    button,.toggle,select{
+      background:var(--panel); color:var(--text); padding:10px 12px; border-radius:12px;
+      border:1px solid rgba(255,255,255,.08); cursor:pointer; box-shadow:var(--shadow); font-size:14px;
+    }
+    button.primary{background:linear-gradient(135deg,#16a34a,#22c55e); border:none; color:white}
+    .toggle{display:flex; align-items:center; gap:8px}
+    .toggle input{accent-color:#22c55e}
+    .stat{margin-left:auto; display:flex; gap:14px; flex-wrap:wrap; font-size:14px; color:var(--muted)}
+    .stat b{color:var(--text)}
+    main{padding:18px; padding-top:10px; flex:1; display:grid; place-items:center}
+    .grid{width:min(1000px,100%); display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+    .card{position:relative; height:150px; perspective:1000px; outline:none}
+    .inner{position:absolute; inset:0; transition:transform .38s cubic-bezier(.2,.7,.2,1); transform-style:preserve-3d; border-radius:var(--radius); box-shadow:var(--shadow)}
+    .card.flipped .inner{transform:rotateY(180deg)}
+    .face{position:absolute; inset:0; border-radius:var(--radius); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; text-align:center; padding:10px; backface-visibility:hidden; border:1px solid rgba(255,255,255,.08)}
+    .front{background:radial-gradient(600px 240px at 50% -30%, rgba(255,255,255,.08), transparent 60%), var(--card)}
+    .back{background:radial-gradient(500px 220px at 50% 120%, rgba(34,197,94,.15), transparent 60%), var(--card-face); transform:rotateY(180deg); color:#eafff1}
+    .type{position:absolute; top:8px; left:10px; font-size:12px; color:var(--muted)}
+    .content{font-size:clamp(18px,3.6vw,28px); line-height:1.2; font-weight:700; word-break:keep-all}
+    .pos{font-size:12px; opacity:.85}
+    .def{font-size:12px; color:#c5e3cf; max-width:90%}
+    .matched .front,.matched .back{background:linear-gradient(135deg, rgba(34,197,94,.18), rgba(34,197,94,.05)); border-color:rgba(34,197,94,.5)}
+    .footer{padding:14px 18px; color:var(--muted); font-size:13px; text-align:center}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>漢字－拼音配對（除夕篇）</h1>
+    <div class="controls" role="group" aria-label="遊戲控制">
+      <button id="newGameBtn" class="primary">新局 / 重新洗牌</button>
+      <label class="toggle" for="ttsToggle">
+        <input id="ttsToggle" type="checkbox" checked />
+        自動朗讀（拼音卡念漢字）
+      </label>
+      <label class="toggle" for="subsetSelect">
+        題量：
+        <select id="subsetSelect" aria-label="選擇本局的詞數">
+          <option value="6" selected>全部 6 詞（12 張）</option>
+          <option value="4">4 詞（8 張）</option>
+        </select>
+      </label>
+    </div>
+    <div class="stat" aria-live="polite">
+      <span>步數：<b id="moves">0</b></span>
+      <span>配對：<b id="pairs">0</b>/<b id="totalPairs">0</b></span>
+      <span>時間：<b id="timer">00:00</b></span>
+    </div>
+  </header>
+
+  <main>
+    <div id="grid" class="grid" aria-label="配對卡片區" role="grid"></div>
+  </main>
+
+  <div class="footer">
+    <span>鍵盤可用：<kbd>Tab</kbd>＋<kbd>Enter</kbd>/<kbd>Space</kbd>。</span>
+  </div>
+
+  <div id="live" class="sr-only" aria-live="polite"></div>
+
+  <script>
+    // ======== 資料：依您提供的 datamap ========
+    const DATA = [
+      { id:1, hanzi:"除夕",   pinyin:"chúxī",      def:"Lunar New Year's Eve",                                   tag:"N", img:"圖片網址" },
+      { id:2, hanzi:"圍爐",   pinyin:"wéilú",      def:"to gather for the New Year's Eve family reunion dinner", tag:"V", img:"圖片網址" },
+      { id:3, hanzi:"年夜飯", pinyin:"niányèfàn",  def:"New Year's Eve reunion dinner",                          tag:"N", img:"圖片網址" },
+      { id:4, hanzi:"吉祥話", pinyin:"jíxiánghuà", def:"auspicious sayings; well-wishing phrases",               tag:"N", img:"圖片網址" },
+      { id:5, hanzi:"壓歲錢", pinyin:"yāsuìqián",  def:"New Year money in red envelopes (for children)",         tag:"N", img:"圖片網址" },
+      { id:6, hanzi:"祭拜",   pinyin:"jìbài",      def:"to worship; to make ritual offerings",                   tag:"V", img:"圖片網址" },
+    ];
+    const HANZI_BY_ID = Object.fromEntries(DATA.map(o => [String(o.id), o.hanzi]));
+
+    // ======== 工具函式 ========
+    const $ = sel => document.querySelector(sel);
+    const announce = msg => { const live = $('#live'); live.textContent = msg; };
+    const shuffle = arr => { const a = arr.slice(); for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a; };
+    const choice = (arr, n) => shuffle(arr).slice(0, n);
+
+    // ======== 狀態 ========
+    let first=null, second=null, lock=false;
+    let moves=0, pairs=0, totalPairs=0;
+    let t0=0, timerId=null; let autoTTS=true;
+
+    // ======== TTS：強制中文語音（無則靜音） ========
+    let zhVoice=null;
+    function pickZhVoice(){
+      const vs = window.speechSynthesis?.getVoices?.() || [];
+      zhVoice = vs.find(v => /^zh(-|_)?TW/i.test(v.lang))
+             || vs.find(v => /^zh(-|_)?CN/i.test(v.lang))
+             || null;
+    }
+    if("speechSynthesis" in window){
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = pickZhVoice;
+      setTimeout(pickZhVoice, 300);
+    }
+    function speak(text){
+      try{
+        if(!autoTTS || !("speechSynthesis" in window)) return;
+        if(!zhVoice) pickZhVoice();
+        if(!zhVoice) return;
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = zhVoice.lang; u.voice = zhVoice; u.rate=0.5; u.pitch=1.0;
+        window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+      }catch(e){}
+    }
+
+    // ======== 卡片 ========
+    function makeCard({id,label,type,def,tag}){
+      const card = document.createElement('button');
+      card.className='card'; card.setAttribute('role','gridcell');
+      card.setAttribute('aria-label', `${type==='hanzi'?'漢字':'拼音'}：${label}`);
+      card.dataset.id=id; card.dataset.type=type; card.tabIndex=0;
+
+      const inner=document.createElement('div'); inner.className='inner';
+      const front=document.createElement('div'); front.className='face front';
+      const back=document.createElement('div'); back.className='face back';
+
+      const tpFront=document.createElement('div'); tpFront.className='type'; tpFront.textContent='翻開查看';
+      const tpBack=document.createElement('div'); tpBack.className='type'; tpBack.textContent= type==='hanzi'?'漢字':'拼音';
+
+      const content=document.createElement('div'); content.className='content'+(type==='pinyin'?' pinyin':''); content.textContent=label;
+
+      const pos=document.createElement('div'); pos.className='pos'; pos.textContent = tag ? `詞類：${tag}` : '';
+      const defi=document.createElement('div'); defi.className='def'; defi.textContent = def || '';
+
+      front.appendChild(tpFront);
+      back.appendChild(tpBack);
+      back.appendChild(content);
+      if(type==='hanzi'){ back.appendChild(pos); back.appendChild(defi); }
+      inner.appendChild(front); inner.appendChild(back); card.appendChild(inner);
+
+      card.addEventListener('click', ()=>onFlip(card));
+      card.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); card.click(); }});
+      return card;
+    }
+
+    function onFlip(card){
+      if(lock || card.classList.contains('flipped') || card.classList.contains('matched')) return;
+      card.classList.add('flipped');
+
+      const id = card.dataset.id;
+      const type = card.dataset.type;
+      const label = card.querySelector('.content')?.textContent || '';
+
+      // 發音策略：漢字卡念漢字；拼音卡也念該詞漢字
+      if(type==='hanzi') speak(label);
+      else if(type==='pinyin') speak(HANZI_BY_ID[id] || label);
+
+      if(!first){ first=card; announce('第一張已翻開'); return; }
+      second=card; lock=true; moves++; $('#moves').textContent=moves;
+
+      const isMatch = first.dataset.id===second.dataset.id && first.dataset.type!==second.dataset.type;
+
+      if(isMatch){
+        setTimeout(()=>{
+          first.classList.add('matched'); second.classList.add('matched');
+          first.setAttribute('aria-disabled','true'); second.setAttribute('aria-disabled','true');
+          first=second=null; lock=false; pairs++; $('#pairs').textContent=pairs; announce('配對成功');
+          if(pairs===totalPairs){ stopTimer(); setTimeout(()=>alert(`完成！步數：${moves}；用時：${$('#timer').textContent}`),150); }
+        }, 350);
+      }else{
+        setTimeout(()=>{ first.classList.remove('flipped'); second.classList.remove('flipped'); first=second=null; lock=false; announce('配對失敗'); }, 650);
+      }
+    }
+
+    // ======== 遊戲流程 ========
+    function buildDeck(pairCount){
+      const pool = choice(DATA, pairCount);
+      totalPairs=pool.length; pairs=0; moves=0;
+      $('#pairs').textContent=pairs; $('#moves').textContent=moves; $('#totalPairs').textContent=totalPairs;
+
+      const deck=[];
+      for(const item of pool){
+        deck.push({id:item.id,label:item.hanzi,type:'hanzi',def:item.def,tag:item.tag});
+        deck.push({id:item.id,label:item.pinyin,type:'pinyin',def:item.def,tag:item.tag});
+      }
+      return shuffle(deck);
+    }
+    function mountGrid(deck){ const grid=$('#grid'); grid.innerHTML=''; deck.forEach(c=>grid.appendChild(makeCard(c))); }
+    function startTimer(){
+      t0=Date.now(); if(timerId) clearInterval(timerId);
+      timerId=setInterval(()=>{ const s=Math.floor((Date.now()-t0)/1000); const mm=String(Math.floor(s/60)).padStart(2,'0'); const ss=String(s%60).padStart(2,'0'); $('#timer').textContent=`${mm}:${ss}`; }, 250);
+    }
+    function stopTimer(){ if(timerId) clearInterval(timerId); timerId=null; }
+    function newGame(){
+      first=second=null; lock=false; autoTTS=$('#ttsToggle').checked;
+      const n=parseInt($('#subsetSelect').value,10);
+      const deck=buildDeck(n); mountGrid(deck);
+      stopTimer(); startTimer(); announce('新局開始！'); window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    // 事件
+    $('#newGameBtn').addEventListener('click', newGame);
+    $('#subsetSelect').addEventListener('change', newGame);
+    $('#ttsToggle').addEventListener('change', ()=>{ autoTTS=$('#ttsToggle').checked; });
+    window.addEventListener('load', newGame);
+  </script>
+</body>
+</html>
